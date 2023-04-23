@@ -1,0 +1,39 @@
+name: Deploy website to S3
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+jobs:
+  deploy-blog:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install minify
+        uses: awalsh128/cache-apt-pkgs-action@1850ee53f6e706525805321a3f2f863dcf73c962
+        with:
+          packages: minify
+          version: 1.0
+      - name: Checkout repository
+        uses: actions/checkout@8e5e7e5ab8b370d6c329ec480221332ada57f0ab # v3.5.2
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@55283cc23133118229fd3f97f9336ee23a179fcf # v1.146.0
+        with:
+          bundler-cache: true # runs 'bundle install' and caches installed gems automatically
+      - name: Build Jekyll site
+        run: |
+          bundle exec jekyll build --destination _site
+      - name: Minify .html files
+        run: |
+          minify -r -o ./ --html-keep-document-tags --html-keep-end-tags --html-keep-default-attrvals --match="\.html$" _site
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@e1e17a757e536f70e52b5a12b2e8d1d1c60e04ef # v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      - name: Deploy to S3
+        run: |
+          aws s3 sync _site ${{ secrets.S3_BUCKET }} --delete
+      - name: Invalidate CloudFront Cache
+        run: |
+          aws cloudfront create-invalidation --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} --paths "/*"
