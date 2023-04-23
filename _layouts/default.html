@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="data:;base64,iVBORw0KGgo=" />
+    <title>
+      {%- if page.title -%}
+        {{- page.title | append: ' | ' | append: site.title | xml_escape -}}
+      {%- else -%}
+        {{- site.title | xml_escape -}}
+      {%- endif -%}
+    </title>
+    <link rel="stylesheet" href="{{- '/assets/css/main.css' | relative_url -}}" />
+  </head>
+  <body>
+    <header>
+      <nav>
+        <ul>
+          <li><a href="{{- '/' | relative_url -}}">Blog</a></li>
+          <li><a href="{{- '/about/' | relative_url -}}">About Me</a></li>
+        </ul>
+      </nav>
+    </header>
+    <main>
+      {{- content -}}
+    </main>
+    <footer>
+      <p>&copy; {{ site.author | xml_escape }} {{ site.time | date: "%Y" | xml_escape }}</p>
+    </footer>
+  </body>
+</html>
