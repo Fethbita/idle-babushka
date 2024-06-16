@@ -1,4 +1,4 @@
-name: Deploy website to S3
+name: Deploy website to Hetzner
 on:
   workflow_dispatch:
   push:
@@ -8,15 +8,24 @@ jobs:
   deploy-blog:
     runs-on: ubuntu-latest
     steps:
-      - name: Install minify
-        uses: awalsh128/cache-apt-pkgs-action@1850ee53f6e706525805321a3f2f863dcf73c962
-        with:
-          packages: minify
-          version: 1.0
       - name: Checkout repository
-        uses: actions/checkout@8e5e7e5ab8b370d6c329ec480221332ada57f0ab # v3.5.2
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      - name: Set SSH key
+        env:
+          SFTP_SSH_KEY: ${{ secrets.SFTP_SSH_KEY }}
+          SFTP_SERVER_PUB_KEYS: ${{ secrets.SFTP_SERVER_PUB_KEYS }}
+        run: |
+          mkdir -p ~/.ssh/
+          echo "$SFTP_SSH_KEY" > ~/.ssh/id-ed25519
+          sudo chmod 600 ~/.ssh/id-ed25519
+          echo "$SFTP_SERVER_PUB_KEYS" > ~/.ssh/known_hosts
+      - name: Install minify and lftp
+        uses: awalsh128/cache-apt-pkgs-action@a6c3917cc929dd0345bfb2d3feaf9101823370ad # v1.4.2
+        with:
+          packages: minify lftp
+          version: 1.0
       - name: Set up Ruby
-        uses: ruby/setup-ruby@55283cc23133118229fd3f97f9336ee23a179fcf # v1.146.0
+        uses: ruby/setup-ruby@5f19ec79cedfadb78ab837f95b87734d0003c899 # v1.173.0
         with:
           bundler-cache: true # runs 'bundle install' and caches installed gems automatically
       - name: Build Jekyll site
@@ -25,15 +34,13 @@ jobs:
       - name: Minify .html files
         run: |
           minify -r -o ./ --html-keep-document-tags --html-keep-end-tags --html-keep-default-attrvals --match="\.html$" _site
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@e1e17a757e536f70e52b5a12b2e8d1d1c60e04ef # v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
-      - name: Deploy to S3
-        run: |
-          aws s3 sync _site ${{ secrets.S3_BUCKET }} --delete
-      - name: Invalidate CloudFront Cache
-        run: |
-          aws cloudfront create-invalidation --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} --paths "/*"
+      - name: Deploy to Hetzner via SFTP
+        env:
+          CUSTOM_404_PATH: ${{ secrets.CUSTOM_404_PATH }}
+        run: >
+          lftp -c "
+            set sftp:connect-program 'ssh -a -x -i ~/.ssh/id-ed25519' &&
+            open sftp://${{ secrets.SFTP_USERNAME }}:@${{ secrets.SFTP_SERVER }}:${{ secrets.SFTP_PORT }} &&
+            put -E -e -O ${{ secrets.SFTP_SERVER_REMOTE_PATH }} _site/404.html -o ${CUSTOM_404_PATH} &&
+            mirror --parallel=10 --reverse --delete -X .htaccess -X ${CUSTOM_404_PATH} _site ${{ secrets.SFTP_SERVER_REMOTE_PATH }};
+            bye"
